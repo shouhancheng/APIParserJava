@@ -1,0 +1,1501 @@
+FORMAT: 1A
+HOST: https://tax.api.avalara.com
+
+# TNG
+
+The Tax API is used to calculate tax and record transactions for tax purposes.   
+Tax can be calculated on sales, purchases, and transfer transactions.   
+
+There are two *record types* the Tax API manages: Tax Calculation Records and Tax Transaction Records.
+When a user of the Tax API simply wants to calculate tax on a transaction, but do not intend to include that transaction in a future filing (such as for quotes or orders), they would create a "tax calculation record" by using the /calculations URL.   
+On the other hand, if a user wants to calculate tax on a transaction to include in a future filing (such as for invoices), they would create a "tax transaction record" by using the /transactions URL.
+
+The request message format, called a TaxDocument, is identical for both tax calculation records and tax transaction records except that documentCode is not required for calculations.
+The response message format is the same as the request message format except that in the case of the response message, tax information has been inserted into the message in context of where the tax applies.
+
+A TaxDocument captures the details of a transaction. They will contain the following sections:
+
+Note:
+In general, any field ending in "Code" will contain values that are issued and managed by you, the Avalara customer or a tax authority. They will not have formatting requirements imposed on them. Examples of these are companyCode and documentCode.
+Any field ending in "Type" must contain a value from a specific set of values defined by our systems. Examples of these are transactionType, defaultEntityUseType, entityUseType.
+Any field starting with "default" in the header, is there to set the default value for that field at the line level. Typically these can be overridden at the line level.
+
+| Section        | Description                                                                                                                                                                                                                                                  |
+|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Header         | This section contains information relating to the transaction as a whole - who are the parties to the transaction, when did it occur, and so on                                                                                                              |
+| Lines          | This section contains the details of the line items associated with the transaction.                                                                                                                                                                         |
+| Calculated Tax Summary | This section of a calculation response rolls up the tax information that applies to the transaction as a whole. Individual lines in the transaction will have information about the tax that applies to them. The tax service creates this section and will overwrite it if it is passed in a request. |
+| ProcessingInfo | This section of a calculation response contains information relating to the mechanics of performing the tax calculation. This section is created by the service during tax calculation.                                                                                                                           |
+| Feedback       | This section allows the caller to provide feedback on their experience of the API. Specifically, the latency experienced by the calling application for the previous request.                                                                                                                         |
+
+The following section goes into the details of the format of the TaxDocument:
+
+## TaxDocument format
+| Element              | Request                                        | Response | Description                                                                                                                                                                                                                                                  | Example                   |
+|----------------------|------------------------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|
+| header               | REQUIRED                                       | ALWAYS   | This section contains information relating to the transaction as a whole - who are the parties to the transaction, when did it occur, and so on. Because tax exemption certificates relate to customers and the customer identity is passed in this header section, this section is REQUIRED if using tax exemption certificates.    | see header format         |
+| lines                | REQUIRED                                       | ALWAYS   | This section is a list of lines items associated with the transaction.                                                                                                                                                                                       | see lines format          |
+| calculatedTaxSummary | IGNORED if present                             | ALWAYS   | This section rolls up the tax information that applies to the transaction as a whole. Individual lines in the transaction will have information about the tax that applies to them. The tax service creates this section and will overwrite it if it is passed in a request. | see taxSummary format     |
+| processingInfo       | IGNORED if present                             | ALWAYS   | This section contains information relating to the tax calculation. This section is created by the service during tax calculation.                                                                                                                           | see processingInfo format |
+| feedback             | OPTIONAL                                       | NEVER    | This section allows the calling application to provide feedback on the API such as the client-side latency.                                                                                                                                                 | see feedback format |
+
+## TaxDocument.header format
+The header element has the following format
+
+| Element             | Request  | Response | Description                                                                                                                                                                                                  | Example                |
+|---------------------|----------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| companyCode         | REQUIRED | ALWAYS   | This string is a code maintained by the client application to uniquely identify the company for which this transaction is being recorded. It is unique within the context of an Account.                     | "A1 Boats"             |
+| transactionType     | REQUIRED | ALWAYS   | This string indicates the type of transaction for which tax should be calculated. It must be one of the following values "Sale", "Purchase" or "Transfer"                                                    | "Sale"                 |
+| documentCode        | REQUIRED for transactions, OPTIONAL for calculations | ALWAYS   | This string is a code maintained by the client application to uniquely identify a document in the client's systems. It will typically be an invoice number, receipt number, returned merchandise authorization number, etc.       | "Invoice:12345"   default for calculations: a generated string ID |
+| customerCode        | REQUIRED for sales, IGNORED otherwise | ALWAYS for sales | This string is a code maintained by the client application to uniquely identify the party with whom the company (identified by companyCode) is transacting. It is unique within the context of an Account.     | "Argosy Cruises"   default: none |
+| vendorCode          | REQUIRED for purchases, IGNORED otherwise | ALWAYS for purchases | This string is a code maintained by the client application to uniquely identify the party with whom the company (identified by companyCode) is transacting. It is unique within the context of an Account.     | "A1 Anchors"   default: none |
+| transactionDate        | REQUIRED | ALWAYS   | This string is the transaction date in ISO 8601 format (which may be different from the date the tax calculation is performed)                                                                                                        | "2014-06-11"  |
+| currency            | OPTIONAL | ALWAYS   | This string is the the currency used for this transaction in ISO 4217:2008 format                                                                                                                            | "USD"   default: default currency associated with the account |
+| totalTaxOverrideAmount   | OPTIONAL | OPTIONAL   | This decimal is the Tax Override Amount which overrides the total tax for the transaction. This may used for imported transactions, returns, and layaways where the tax has already been calculated either by AvaTax or another means. The tax shown for each line item is proportional to the line item's price. See the taxOverrideAmount for each line item to specify an override for a single line or to distribute the tax disproportionate to the price. | 2.53   default: none    |
+| taxCalculationDate  | OPTIONAL | OPTIONAL   | This string is the date, in ISO 8601 format, on which tax is to be calculated for this transaction (normally tax is calculated on the date the transaction is performed as captured in the transactionDate field). This is useful for layaways and other deferred transactions.     | "2014-06-11"   default: set the same as the transaction date field |
+| defaultAvalaraGoodsAndServicesModifierType | OPTIONAL | NEVER   | This string captures the goods and services modifier to be used for all lines that do not override this value. The Avalara goods and services type determines the specific type of goods or services associated with a particular line in the transaction. The Avalara goods and services modifier determines variations on the goods and services type. For example, if the goods were a type of food, the modifier might be "dine in" or "take out". If the goods and services were a "bicycle" the modifier might be "rental" versus "title".        | "Rental", default: "Title" (ie: ownership was transfered) |
+| defaultLocations    | REQUIRED if not specified in the lines | ALWAYS if not specified in the lines   | This element contains a dictionary of locations such as the origin and destination addresses to be associated with this transaction. These locations may be overridden within each line item. The key for each location in the dictionary is the location "purpose". Valid locations purposes are "shipFrom", "shipTo", "pos", "pom", "poo", "billingLocation", "callPlaced", "callReceived", "cerviceRendered", "poa" and "firstUse". There can only be one location of a given purpose in the dictionary.              | See sample message below. Location values are in location format below. default: none   |
+| defaultTaxPayerCode | OPTIONAL | OPTIONAL | This string is a code issued by a tax authority to identify a party (typically the customer associated with the customerCode field) that is exempt from tax for this type of transaction. This will apply to all lines in this transaction that don't otherwise override it.                                                    | "A2323223" default: none|
+| defaultEntityUseType    | OPTIONAL | OPTIONAL   | This string captures the type of customer or type of use associated with all lines in the transaction that don't otherwise override this value. Valid values are: A - Federal Government, B - State/Local Govt., C - Tribal Government, D - Foreign Diplomat, E - Charitable Organization, F - Religious/Education, G - Resale, H - Agricultural Production, I - Industrial Prod/Mfg., J - Direct Pay Permit, K - Direct Mail, L - Other, N - Local Government, P - Commercial Aquaculture (Canada), Q - Commercial Fishery (Canada), R - Non-resident (Canada)  | "H" (for Agricultural Production) default: none   |
+| purchaseOrderNumber | OPTIONAL | OPTIONAL   | This is a string representing a purchase order number which might be used to look up a single use tax exemption certification            | "PO:1234" default: none     |
+| metadata            | OPTIONAL | OPTIONAL   | This is a collection of MetadataItems (string pairs) which exists to allow callers of the API to set arbitrary information that will be returned in the tax calculation response and which can be used during reporting            | See metadataItem below. default: none     |
+
+## TaxDocument.lines format
+Each line element in the list has the following format.
+Item extendedAmount should remain positive for line items in Returns transactions.
+
+| Element            | Request  | Response | Description                                                                                                                                                   | Example         |
+|--------------------|----------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| lineCode           | REQUIRED | ALWAYS   | This string is a unique identifier for this line in the transaction                                                                                           | "1", ""dkj23"               |
+| itemCode           | REQUIRED | ALWAYS   | This string is a code maintained by the client application to uniquely identify a product or service. It will likely be a SKU and is required for SST states. | "22456366"           |
+| avalaraGoodsAndServicesType   | OPTIONAL | ALWAYS   | This string identifies a category of products for tax purposes. It will likely be one of Avalara's standard avalaraGoodsAndServicesTypes, but may be a custom type configured in the Customer Portal. If not specified, itemCode to avalaraGoodsAndServicesType mapping will happen during tax calculation. | "PC040402"           |
+| avalaraGoodsAndServicesModifierType  | OPTIONAL | ALWAYS   | This string captures the goods and services modifier to be used for this line. The Avalara goods and services type determines the specific type of goods or services associated with a particular line in the transaction. The Avalara goods and services modifier determines variations on the goods and services type. For example, if the goods were a type of food, the modifier might be "dine in" or "take out". If the goods and services were a "bicycle" the modifier might be "rental" versus "title".                      | "Rental" default: "Title" (i.e.: transfer of title)|
+| quantity           | OPTIONAL | ALWAYS   | This decimal captures the number of individual units represented by this line. Digits after the decimal point are optional.                                   | 3.0, 1, default: 1         |
+| extendedAmount     | REQUIRED | ALWAYS   | This decimal captures the total cost of this line. In its simplest form extendedAmount = unit price * quantity                                                  | 43.50           |
+| itemDescription    | REQUIRED | ALWAYS   | This string captures the description of the item represented by this line                                                                                     | "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes" |
+| unitOfMeasure      | OPTIONAL | ALWAYS   | This string captures the unit of measure associated with this line item. The default unit is "Each" if this field is not specified. Valid values are "Each", "liters" ... need to coordinate this with content platform ??? | "Each". default: "Each" |
+| locations          | REQUIRED if not specified in the header | ALWAYS if not specified in the header | This element contains a dictionary of locations such as the shipFrom and shipTo addresses to be associated with this line. These locations may override those specified in a transaction header. The key for each location in the dictionary is the location "purpose". Valid location purposes are "shipFrom", "shipTo", "pos", "pom", "poo", "billingLocation", "callPlaced", "callReceived", "serviceRendered", "poa" and "firstUse". There can only be one location of a given purpose in the dictionary.              | See sample message below. Location values are in location format below. default: none   |
+| taxPayerCode       | OPTIONAL | OPTIONAL | This string is a code issued by a tax authority to identify a party (typically the customer associated with the customerId field) that is exempt from tax for this type of transaction. This value will override any value set at the transaction level.                                                    | "A2323223" default: none|
+| entityUseType      | OPTIONAL | OPTIONAL   | This string captures the type of customer or type of use associated with this line in the transaction. Valid values are: A - Federal Government, B - State/Local Govt., C - Tribal Government, D - Foreign Diplomat, E - Charitable Organization, F - Religious/Education, G - Resale, H - Agricultural Production, I - Industrial Prod/Mfg., J - Direct Pay Permit, K - Direct Mail, L - Other, N - Local Government, P - Commercial Aquaculture (Canada), Q - Commercial Fishery (Canada), R - Non-resident (Canada) | "H" (for Agricultural Production) default: "L" (which means default tax processing)   |
+| taxOverrideAmount  | OPTIONAL | OPTIONAL   | This decimal is the Tax Override Amount which overrides the tax for the line. This may used for imported transactions, returns, and layaways where the tax has already been calculated either by AvaTax or another means.  | 2.53   default: none    |
+| taxIncluded        | OPTIONAL | OPTIONAL | This is a field to indicate whether the extendedPrice includes tax or not. It must be either "true" or "false" if present.             | "true"  default: "false"  |
+| metadata           | OPTIONAL | OPTIONAL | This is a collection of MetadataItems (string pairs) which exists to allow callers of the API to set arbitrary information that will be returned in the tax calculation response and which can be used during reporting            | See metadataItem below  default: none   |
+| calculatedTax      | IGNORED if present | ALWAYS   | This element contains the calculated tax information for this line item. This element is created by the tax service and overwritten if it exists.             | see calculatedTax below |
+
+## TaxDocument.calculatedTaxSummary format
+The calculated tax summary  is the rollup of the individual line item tax information.
+
+| Element               | Request  | Response | Description                                                                                                                         | Example          |
+|-----------------------|----------|----------|-------------------------------------------------------------------------------------------------------------------------------------|------------------|
+| numberOfTaxableLines    | IGNORED if present | ALWAYS   | This integer captures the number of lines that were determined to have tax due on them                                              | 1                |
+| numberOfExemptLines | IGNORED if present | ALWAYS   | This integer represents the number of lines that were determined to not have any tax due on them                                    | 0                |
+| numberOfLines         | IGNORED if present | ALWAYS   | This integer captures the number of lines in the transaction                                                                        | 1                |
+| subtotal              | IGNORED if present | ALWAYS   | This decimal captures the subtotal for this transaction                                                                             | 43.50            |
+| subtotalTaxable         | IGNORED if present | ALWAYS   | This decimal captures the amount that that had tax applied to it                                                                    | 43.50            |
+| subtotalExempt      | IGNORED if present | ALWAYS   | This decimal captures the amount of this transaction that was not taxed.                                                            | 0.0              |
+| tax                   | IGNORED if present | ALWAYS   | This decimal captures the amount of tax due for this transaction.                                                                   | 4.13             |
+| grandTotal            | IGNORED if present | ALWAYS   | This decimal captures the total due to be paid by the purchaser to the seller including tax.                                        | 47.63            |
+
+## TaxDocument.processingInfo format
+The processingInfo element has the following format
+
+| Element       | Request  | Response | Description                                                                                                                                                      | Example                            |
+|---------------|----------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|
+| transactionState | IGNORED if present | ALWAYS   | This string represents the state of the transaction in the Avalara systems. It will have a value equal to the name of one of the states a transaction can be in. | "Recorded"                         |
+| versionId     | IGNORED if present | ALWAYS   | This string is a unique identifier for the tax calculation.                                                                                                      | "895d52b1f3c54696a8644eded8e32ee4" |
+| formatId      | IGNORED if present | ALWAYS   | This integer represents the format of this transaction, which may be useful for support queries.                                                                    | 3                                  |
+| duration      | IGNORED if present | ALWAYS   | This decimal represents the number of seconds taken to process the tax calculation.                                                                              | 0.130                              |
+| modifiedDate  | IGNORED if present | ALWAYS   | This string is the date, in ISO 8601 format, on which the most recent update to this document was posted                                                            | "2014-06-11 19:33:53Z"         |
+| batchId      | IGNORED if present | OPTIONAL   | This string identifies the batch that this transaction was part of. If the transaction was not part of a batch import, this field is omitted. If the transaction was part of multiple batches, this string identifies the most recent. | "895d52b1f3c54696a8644eded8e32ee4" |
+
+## TaxDocument.feedback format
+The feedback element has the following format.
+Avalara support uses this information to help us understand how well we're serving our customers.
+
+| Element       | Request  | Response | Description                                                                                                                                                      | Example                            |
+|---------------|----------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|
+| latencyData   | OPTIONAL | NEVER    | This field is a list of latency in miliseconds for previous calls from the client perspective.                                                                 | see LatencyInfo format below       |
+
+## LatencyInfo format
+The latency info element has the following format.
+
+| Element       | Request  | Response | Description                                                                                                                                                      | Example                            |
+|---------------|----------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|
+| latency       | OPTIONAL | NEVER    | This integer captures the latency in miliseconds for a previous call from the client perspective.                                                                | 100                                |
+| versionId     | OPTIONAL | NEVER    | This string captures the versionId (returned to the client in the processingInfo.versionId field) of the transaction for which latency is being passed.          | "895d52b1f3c54696a8644eded8e32ee4" |
+
+## Location Format
+Locations are used for specific purposes which are enumerated in the table below. To calculate tax for a line in a transaction transaction, the tax calculation engine
+may need to know about the "origin" and the "destination" of the transaction. Sometimes determining these locations is straight forward, as in the case of an item
+purchased in person at a retail store for immediate consumption (a single POS address would suffice to indicate the origin and destination of the transaction).
+
+Other cases are only slightly more complicated, such as when a product is purchased over the phone and shipped from a warehouse to the customer's house. In this second case,
+a Ship-from location would serve as the origin, and a Ship-to location would serve as the destination.
+
+Exactly which locations are required for a given transaction depends on the context of transaction. Specifically, such things as the transactionType, avalaraGoodsAndServicesType, and applicable jurisdictions may influence what location information is required in order to calculate tax.
+In the case where more than one location of a given category (origin/destination) is associated with a line, the jurisdiction will determine which location is used, and this will be indicated in the calculation response. The locations can be associated at the line
+level or the line can inherit the location from the header.
+
+Locations have the following format:
+
+| Element         | Request  | Response | Category    | Description                                     |
+|-----------------|----------|----------|-------------|-------------------------------------------------|
+| shipFrom        | OPTIONAL | OPTIONAL | origin      | A locationContent to hold the origin of the transaction or line item      |
+| callPlaced      | OPTIONAL | OPTIONAL | origin      | A locationContent to hold the origin of a phone call  |
+| pom             | OPTIONAL | OPTIONAL | origin      | A locationContent to hold the point of manufacture of an item |
+| poa             | OPTIONAL | OPTIONAL | origin      | A locationContent to hold the point of access to an item |
+| dropship        | OPTIONAL | OPTIONAL | origin      | A locationContent to hold the drop shipment location of an item |
+| pos             | OPTIONAL | OPTIONAL | origin & destination | A locationContent to hold the point of sale of an item |
+| shipTo          | OPTIONAL | OPTIONAL | destination | A locationContent to hold the ship to location of an item |
+| poo             | OPTIONAL | OPTIONAL | destination | A locationContent to hold the point of order origin of an item |
+| billingLocation | OPTIONAL | OPTIONAL | destination | A locationContent to hold the billing location of an item |
+| callReceived    | OPTIONAL | OPTIONAL | destination | A locationContent to hold the destination of a phone call |
+| serviceRendered | OPTIONAL | OPTIONAL | destination | A locationContent to hold the location a service item was rendered |
+| firstUse        | OPTIONAL | OPTIONAL | destination | A locationContent to hold the location of first use of an item |
+
+## Location Content Format
+
+The tax calculation service will add the field "taxLocationPurpose" to any locationContents used for tax calculation, and set its value to the role played in the calculation, which will be one of "origin" or "destination".
+
+locationContent has the following format:
+
+| Element   | Request  | Response | Description                                     | Example                  |
+|-----------|----------|----------|-------------------------------------------------|--------------------------|
+| address   | OPTIONAL | OPTIONAL | This element contains a street or shipping address. The tax calculation service will convert this to a latlong          | see address format below |
+| latlong   | OPTIONAL | ALWAYS   | This element contains a latitude and longitude | see latlong format below |
+| locationCode | OPTIONAL | OPTIONAL   | This string is the identity of a pre-configured location unique to the company | "Loc134" |
+| IpAddress | OPTIONAL | OPTIONAL   | This is an IP address for digital distribution | "54.1.3.1" |
+|           |          |            |                                                |            |
+| addressTaxPayerCode | OPTIONAL | OPTIONAL   | This taxPayerCode overrides any taxPayerCode that may have been specified in the header or line item if this address is determined to govern the selection of tax rules (i.e.: if the transaction is sourced to this address) | "98237498623948" |
+| addressEntityUseType | OPTIONAL | OPTIONAL   | This entityUseType overrides any entityUseType that may have been specified in the header or line item if this address is determined to govern the selection of tax rules (i.e.: if the transaction is sourced to this address). Valid values are: A - Federal Government, B - State/Local Govt., C - Tribal Government, D - Foreign Diplomat, E - Charitable Organization, F - Religious/Education, G - Resale, H - Agricultural Production, I - Industrial Prod/Mfg., J - Direct Pay Permit, K - Direct Mail, L - Other, N - Local Government, P - Commercial Aquaculture (Canada), Q - Commercial Fishery (Canada), R - Non-resident (Canada) | "H" (for Agricultural Production) default: "L" (which means default tax processing) | "H" |
+
+## LatLong format
+Latlong contains a latitude and longitude for a location on earth. It has the following format.
+
+| Element   | Request  | Response | Description                                            | Example                  |
+|-----------|----------|----------|--------------------------------------------------------|--------------------------|
+| latitude  | ALWAYS   | ALWAYS   | This decimal captures the latitude of the transaction  | 47.604813                |
+| longitude | ALWAYS   | ALWAYS   | This decimal captures the longitude of the transaction | -122.339811              |
+
+## Address format
+Address has the following format
+
+| Element | Request  | Response | Description                                                  | Example            |
+|---------|----------|----------|--------------------------------------------------------------|--------------------|
+| line1   | ALWAYS   | ALWAYS   | This string captures the first line of the address           | "1101 Alaskan Way" |
+| line2   | OPTIONAL | OPTIONAL | This string captures the second line of the address | "Suite 123"        |
+| line3   | OPTIONAL | OPTIONAL | This string captures the third line of the address  | "Box 123", "Framingham Pigot"  |
+| city    | OPTIONAL | ALWAYS for countries that use it | This string captures the city of the address                 | "Seattle", "Montreal", "Bournemouth" |
+| state   | OPTIONAL | ALWAYS for countries that use it   | This string captures the state of the address       | "WA", "QC", "Washington", "Quebec" |
+| country | ALWAYS   | ALWAYS for countries that use it   | This string captures the country code in ISO 3166-1 alpha-3 format   | "USA", "CAN", "GBR"      |
+| zipcode | ALWAYS   | ALWAYS for countries that use it   | This string captures the zip code of the address             | "98101", "V8X 3X4", "BH1 1AA" |
+| municipality  | OPTIONAL | ALWAYS for countries that use it | Synonym for city                                       | "Seattle", "Montreal", "Bournemouth" |
+| town    | OPTIONAL | ALWAYS for countries that use it | Synonym for city                                             | "Seattle", "Montreal", "Bournemouth" |
+| province  | OPTIONAL | ALWAYS for countries that use it | Synonym for state                                          | "WA", "QC"            |
+| postalCode | ALWAYS   | ALWAYS for countries that use it   | Synonym for zipcode                                       | "98101", "V8X 3X4", "BH1 1AA"   |
+| postcode | ALWAYS   | ALWAYS for countries that use it   | Synonym for zipcode                                         | "98101", "V8X 3X4", "BH1 1AA"   |
+
+## MetadataItem format
+Each MetadataItem in the list is a name / value pair. Examples would be "customerRef":"12345", "comment":"this was done to compensate for a previous customer satisfaction issue", "PurchaseOrder":"PO1232", "SalesPersonCode":"21123".
+MetadataItems can be used in reporting and for reference information.
+
+## calculatedTax format
+Each line element in the list has the following format
+
+| Element            | Request  | Response | Description                                                                                                                                                   | Example         |
+|--------------------|----------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| appliedTax         | IGNORED if present | ALWAYS   | This decimal captures the total tax applicable for this line                                                                                                  | 4.13            |
+| subtotalTaxable         | IGNORED if present | ALWAYS   | This decimal captures how much of the extendedAmount was taxable. The subtotal taxable may vary from jurisdiction to jurisdiction and from tax to tax, and this number represents the highest amount taxed from any tax in any jurisdiction. | 4.13            |
+| subtotalExempt         | IGNORED if present | ALWAYS   | This decimal captures how much of the extendedAmount was non-taxed. This is simply the extended amount minus the subtotal taxed.                                                                                                  | 0            |
+| taxAuthorities     | IGNORED if present | ALWAYS   | This list of elements breaks out the tax authorities that apply to this line                                                                                  | see taxAuthorities format below |
+
+## calculatedTax.taxAuthorities format
+Each taxAuthority in the list has the following format.
+
+| Element          | Request  | Response | Description                                                                              | Example                          |
+|------------------|----------|----------|------------------------------------------------------------------------------------------|----------------------------------|
+| jurisdictionName | IGNORED if present | ALWAYS   | This string captures the name of the taxing jurisdiction                                 | "WASHINGTON"                     |
+| jurisdictionType | IGNORED if present | ALWAYS   | This string captures the type of taxing jurisdiction                                     | "State"                          |
+| details          | IGNORED if present | ALWAYS   | This list of elements captures the types and amounts of tax imposed by this jurisdiction | see details format below         |
+
+## calculatedTax.taxAuthorities[n].details format
+Each detail in the list has the following format. Note that sometimes a single tax may be banded, meaning that it applies at different rates depending on the extendedAmount (or individual amount) of the item. Each band will have its own detail in the list.
+
+| Element         | Request  | Response | Description                                                                                                               | Example               |
+|-----------------|----------|----------|---------------------------------------------------------------------------------------------------------------------------|-----------------------|
+| taxType         | IGNORED if present | ALWAYS   | This string captures the name of the tax                                                                        | "sales"               |
+| subtotalTaxable   | IGNORED if present | ALWAYS   | This decimal captures how much of the extendedAmount was taxable by this tax                                     | 4.13            |
+| subtotalExempt | IGNORED if present | ALWAYS   | This decimal captures how much of the extendedAmount was non-taxed. This is simply the extended amount minus the subtotal taxed.        | 0            |
+| rate            | IGNORED if present | ALWAYS   | This decimal captures the tax rate for this tax                                                                 | 0.03                  |
+| tax             | IGNORED if present | ALWAYS   | This is the product of subtotalTaxable and rate                                                                  | 0.13                 |
+| exempt          | IGNORED if present | ALWAYS   | This flag is used to indicate that this customer is exempt from this tax for this transaction                   | false                 |
+| exemptionReason | IGNORED if present | OPTIONAL | This string is required if the exempt flag is present and set to true                                           | "Certificate on File" |
+| passthrough     | IGNORED if present | ALWAYS   | This flag is used to indicate that this tax is a passthrough (shows up on returns but not on receipt)           | false                 |
+| originLocation | IGNORED if present | ALWAYS   | This element captures the location determined to be the "origin" for this tax detail based on the locations associated with this line. It will be one of "shipFrom", "callPlaced", "pom", "poa", "dropShip", "pos"    | "shipFrom" |
+| destinationLocation | IGNORED if present | ALWAYS   | This element captures the location determined to be the "destination" for this tax detail based on the locations associated with this line. It will be one of "pos", "shipTo", "poo", "billingLocation", "callReceived", "serviceRendered", "firstUse"    | "shipTo" |
+
+## HTTP headers
+| Header              | Required | Description                                                                                                                                                                                                                                                                                                                                                         | Example                                                          |
+|---------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| Accept              | REQUIRED | The content type header is used by the client to tell the server how to interpret the message body. We set this to application/json, but we also add a parameter called "tax-version" indicating the version of the tax transaction record format. This parameter is required. If this parameter is not specified an error will be returned by the service.                   | application/json; tax-version=1                                  |
+| User-Agent          | REQUIRED | The user agent header is used to indicate the technology of the client application (or connector). This is a string that is built into a connector or issued to an SDK partner when they sign up to use the SDK.                                                                                                                                                    | "Drupal Connector v6.2"             |
+| Authorization       | REQUIRED | The Authorization header is used to identify the actor (person or system) making the request. The value is of the format "AvalaraAuth : access info", where "access info" is the Base64 encoding of the string "accessKeyId:accessKeySecret" for the actor making the call. The access info is issued by avalara.com when the user registers for an access to a service. AccessKeyId and accessKeySecret are UTF8 encoded strings.                                                 | "Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1"     |
+| X-Avalara-AccountId | REQUIRED | The X-Avalara-AccountId header is used to identify the Avalara customer's account the caller wants to access. Under most circumstances a given caller only has access to a single account, but in some cases, as for CPA's working for multiple clients, a single caller may have access to multiple accounts, and this header is used to distinguish between them. | 2ead98c1-ecbf-4708-8d86-b01af8bc13e5c                            |
+
+# Group Tax Calculation Records
+This service is used to calculate tax for a transaction without accruing tax liabilities for later audit and filing.
+Use the tax transaction record service instead to record the accrual of tax liabilities.
+
+## Generating Tax Calculation Records [/calculations]
+The address to use for calculating tax obligations associated with transactions (sales, purchases, transfers, etc).   
+
+To calculate tax, AvaTax requires a tax document in a JSON element in the request body.   
+Making multiple POSTs to the /calculations service with the same companyCode and documentCode will result in the creation of a calculation record on the first call and then updates to that calculation record on subsequent calls.
+
+### Create a Tax Calculation Record [POST]
+
++ Request Create a Tax Calculation Record (application/json)
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: Agent X Connector v12
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "itemCode": "22456366",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes"
+                    }
+                ]
+            }
+
+
+
++ Response 200 (application/json)
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "currency": "USD",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "itemCode": "22456366",
+                        "avalaraGoodsAndServicesType": "PC040402",
+                        "avalaraGoodsAndServicesModifierType": "Title",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes",
+                        "unitOfMeasure": "Each",
+                        "calculatedTax": {
+                            "appliedTax": 3.09,
+                            "subtotalTaxable": 32.5,
+                            "subtotalExempt": 3.09,
+                            "taxAuthorities": [
+                                {
+                                    "jurisdictionName": "WASHINGTON",
+                                    "jurisdictionType": "StateOrProvince",
+                                    "details": [
+                                        {
+                                            "taxType": "WASHINGTON STATE Sales",
+                                            "tax": 2.93,
+                                            "originLocation": "shipFrom",
+                                            "destinationLocation": "shipTo",
+                                            "rate": 9.5,
+                                            "subtotalTaxable": 32.5,
+                                            "subtotalExempt": 0,
+                                            "exempt": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "calculatedTaxSummary": {
+                    "numberOfTaxableLines": 1,
+                    "numberOfExemptLines": 0,
+                    "numberOfLines": 1,
+                    "subtotal": 32.5,
+                    "subtotalTaxable": 32.5,
+                    "subtotalExempt": 0,
+                    "tax": 3.09,
+                    "grandTotal": 35.59
+                },
+                "processingInfo": {
+                    "transactionState": "Recorded",
+                    "versionId": "895d52b1f3c54696a8644eded8e32ee4",
+                    "formatId": 3,
+                    "duration": 0.13,
+                    "modifiedDate": "2014-06-11 19:33:53Z",
+                    "batchId":"123213"
+                }
+            }
+
+
+## Retrieving Tax Calculation Record Lists [/calculations/{companyCode}]
+## Retrieving Tax Calculation Record Lists [/calculations/{companyCode}/{transactionType}]
+## Retrieving Tax Calculation Record Lists [/calculations/{companyCode}/{transactionType}{?limit}]
+## Retrieving Tax Calculation Record Lists [/calculations/{companyCode}/{transactionType}{?limit}{?startCode}]
+## Retrieving Tax Calculation Record Lists [/calculations/{companyCode}/{transactionType}{?limit}{?startCode}{?startDate}]
+## Retrieving Tax Calculation Record Lists [/calculations/{companyCode}/{transactionType}{?limit}{?startCode}{?startDate}{?endDate}]
+This is how Avatax customers can retrieve a list of all their tax calculation records.   
+The value for *companyCode* is assigned by the calling application and is passed to /calculations in the body of the request when the calculation was generated.   
+
++ Parameters
+    + companyCode (URL encoded string, `"Argosy Cruises"`) ... This is a code maintained by the client application to uniquely identify the party on whose behalf we are recording the tax transaction record in the context of an Account. It is unique within the context of an Account.
+    + transactionType (URL encoded string, `"Sale"`) ... This string indicates the type of the transaction. It must be one of "Sale", "Purchase" or "Transfer".
+    + limit (optional, integer, `100`) ... This is the maximum number of records that should be returned by this call.
+    + startCode (optional, URL encoded documentCode, `"Invoice123"`) ... The search will return up to limit records starting from this documentCode.
+    + startDate (optional, URL encoded date in ISO format, `"2014-06-10"`) ... This is the first date to include in the search.
+    + endDate (optional, URL encoded date in ISO format, `"2014-06-12"`) ... This is the last date to include in the search.
+
+### Retrieve a list of calculations [GET]
+
++ Request JSON Message
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: NetDynamics Connector v12
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+
++ Response 200 (application/json)
+
+    + Body
+
+            [
+                {
+                    "header" : {
+                        "companyCode": "A1 Boats",
+                        "transactionType": "Sale",
+                        "documentCode": "#12345",
+                        "customerCode": "ArgosyCruises",
+                        "transactionDate": "2014-06-11"
+                    },
+                    "lines": [
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Title"
+                        }
+                    ],
+                    "calculatedTaxSummary": {
+                        "subtotalTaxable": 32.5,
+                        "subtotalExempt": 0,
+                        "tax": 3.09
+                    },
+                    "processingInfo": {
+                        "transactionState": "Recorded",
+                        "modifiedDate": "2014-06-11 19:33:53Z",
+                        "batchId":"123213"
+                    }
+                },
+                {
+                    "header" : {
+                        "companyCode": "A1 Boats",
+                        "transactionType": "Sale",
+                        "documentCode": "#12346",
+                        "customerCode": "LetsGoSailing",
+                        "transactionDate": "2014-06-12"
+                    },
+                    "lines": [
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Title"
+                        },
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Rental"
+                        }
+                    ],
+                    "calculatedTaxSummary": {
+                        "subtotalTaxable": 11.23,
+                        "subtotalExempt": 4.00,
+                        "tax": 2.53
+                    },
+                    "processingInfo": {
+                        "transactionState": "Recorded",
+                        "modifiedDate": "2014-06-11 19:33:53Z"
+                    }
+                },
+                {
+                    "header" : {
+                        "companyCode": "A1 Boats",
+                        "transactionType": "Sale",
+                        "documentCode": "#12347",
+                        "customerCode": "WSDOT",
+                        "transactionDate": "2014-06-13"
+                    },
+                    "lines": [
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Title"
+                        }
+                    ],
+                    "calculatedTaxSummary": {
+                        "subtotalTaxable": 12.23,
+                        "subtotalExempt": 7.00,
+                        "tax": 0.53
+                    },
+                    "processingInfo": {
+                        "transactionState": "Voided",
+                        "modifiedDate": "2014-06-11 19:33:53Z",
+                        "batchId":"123213"
+                    }
+                }
+            ]
+
+
+## Retrieving a single Tax Calculation Record [/calculations/{companyCode}/{transactionType}/{documentCode}]
+This is how Avatax customers can retrieve their calculations.   
+The values for *companyCode* and *documentCode* are assigned by the calling application and are passed to /calculations service in the body of the request when the calculation was generated. The *transactionType* component is passed by the calling application and must be one of "Sale", "Purchase" or "Transfer".
+The most recent version of the calculation is retrieved.
+
++ Parameters
+    + companyCode (URL encoded string, `"Default"`) ... This is a code maintained by the client application to uniquely identify the party on whose behalf we are recording the calculation in the context of an Account. It is unique within the context of an Account.
+    + transactionType (URL encoded string, `"Sale"`) ... This string indicates the type of the transaction. It must be one of "Sale", "Purchase" or "Transfer".
+    + documentCode (URL encoded String, `"1233122"`) ... This is a code maintained by the client application to uniquely identify a transaction. It will typically be an invoice number, receipt number, returned merchandise authorization number, etc.
+
+### Retrieve a single calculation [GET]
+
++ Request JSON Message
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: "QBO v12"
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+
++ Response 200 (application/json)
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "currency": "USD",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "transactionType": "Sale",
+                        "itemCode": "22456366",
+                        "avalaraGoodsAndServicesType": "PC040402",
+                        "avalaraGoodsAndServicesModifierType": "Title",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes",
+                        "unitOfMeasure": "Each",
+                        "calculatedTax": {
+                            "appliedTax": 3.09,
+                            "subtotalTaxable": 32.5,
+                            "subtotalExempt": 3.09,
+                            "taxAuthorities": [
+                                {
+                                    "jurisdictionName": "WASHINGTON",
+                                    "jurisdictionType": "StateOrProvince",
+                                    "details": [
+                                        {
+                                            "taxType": "WASHINGTON STATE Sales",
+                                            "tax": 2.93,
+                                            "originLocation": "shipFrom",
+                                            "destinationLocation": "shipTo",
+                                            "rate": 9.5,
+                                            "subtotalTaxable": 32.5,
+                                            "subtotalExempt": 0,
+                                            "exempt": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "calculatedTaxSummary": {
+                    "numberOfTaxableLines": 1,
+                    "numberOfExemptLines": 0,
+                    "numberOfLines": 1,
+                    "subtotal": 32.5,
+                    "subtotalTaxable": 32.5,
+                    "subtotalExempt": 0,
+                    "tax": 3.09,
+                    "grandTotal": 35.59
+                },
+                "processingInfo": {
+                    "transactionState": "Recorded",
+                    "versionId": "895d52b1f3c54696a8644eded8e32ee4",
+                    "formatId": 3,
+                    "duration": 0.13,
+                    "modifiedDate": "2014-06-11 19:33:53Z"
+                }
+            }
+
+
+## Creating tax transaction records directly from existing Tax Calculation Records [/calculations/{companyCode}/{transactionType}/{documentCode}/transactions]
+It is sometimes convenient to create a tax transaction record directly from a previous tax calculation record. Perhaps an unchanged order is now to be invoiced, for example.
+Transactions can be created from tax calculations as shown below:
+![Transaction State Diagram](https://f8ad03296218c1f358e05fb8588c090f2f9d502d.googledrive.com/host/0B7DZjLT2LZrwQVpGNWx2Y1Uwc0U/TNG%20Document%20Flow.jpg "Transaction State Diagram")
+
+Tax transaction records can be created from tax calculation records either with a recalculation of the tax (this should be the most common situation) or without recalculation of the tax (this is unusual).
+
+To create transactions records from tax calculation records, AvaTax requires the following information in a JSON element in the request body:
+
+Tax transaction record from Calculation Request format
+
+| Element               | Description                                                                            | Example                 |
+|-----------------------|----------------------------------------------------------------------------------------|-------------------------|
+| recalculate           | This optional boolean must contain one of the following values: true, false      | true. default: true               |
+| documentCode         | This required string will contains the documentCode for the new tax transaction record.         | "Invoice123"  |
+| comment               | This optional string will be recorded along with the event for audit purposes.         | "Government Contract ABC". default: none  |
+
+The location header in the response contains the address of the new tax trasaction record. Note that the companyCode will always be the same for the existing tax calculation record and the new tax transaction record.
+
++ Parameters
+    + companyCode (URL encoded string, `"Default"`) ... This is a code maintained by the client application to uniquely identify the party on whose behalf we recorded the calculation and are recording the transaction in the context of an Account. It is unique within the context of an Account.
+    + transactionType (URL encoded string, `"Sale"`) ... This string indicates the type of the transaction. It must be one of "Sale", "Purchase" or "Transfer".
+    + documentCode (URL encoded String, `"1233122"`) ... This is a code maintained by the client application to uniquely identify a transaction. It will typically be an invoice number, receipt number, returned merchandise authorization number, etc.
+
+### Create a tax transaction record from a calculation [POST]
+
++ Request Update JSON Message (application/json)
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+    + Body
+
+            {
+                "documentCode": "Invoice123"
+            }
+
++ Response 201
+
+    + Header
+
+            Location: https://tax.api.avalara.com/transactions/Argosy%20Cruises/Sale/Invoice%3A12345
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "currency": "USD",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "transactionType": "Sale",
+                        "itemCode": "22456366",
+                        "avalaraGoodsAndServicesType": "PC040402",
+                        "avalaraGoodsAndServicesModifierType": "Title",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes",
+                        "unitOfMeasure": "Each",
+                        "calculatedTax": {
+                            "appliedTax": 3.09,
+                            "subtotalTaxable": 32.5,
+                            "subtotalExempt": 3.09,
+                            "taxAuthorities": [
+                                {
+                                    "jurisdictionName": "WASHINGTON",
+                                    "jurisdictionType": "StateOrProvince",
+                                    "details": [
+                                        {
+                                            "taxType": "WASHINGTON STATE Sales",
+                                            "tax": 2.93,
+                                            "originLocation": "shipFrom",
+                                            "destinationLocation": "shipTo",
+                                            "rate": 9.5,
+                                            "subtotalTaxable": 32.5,
+                                            "subtotalExempt": 0,
+                                            "exempt": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "calculatedTaxSummary": {
+                    "numberOfTaxableLines": 1,
+                    "numberOfExemptLines": 0,
+                    "numberOfLines": 1,
+                    "subtotal": 32.5,
+                    "subtotalTaxable": 32.5,
+                    "subtotalExempt": 0,
+                    "tax": 3.09,
+                    "grandTotal": 35.59
+                },
+                "processingInfo": {
+                    "transactionState": "Recorded",
+                    "versionId": "895d52b1f3c54696a8644eded8e32ee4",
+                    "formatId": 3,
+                    "duration": 0.13,
+                    "modifiedDate": "2014-06-11 19:33:53Z"
+                }
+            }
+
+
+# Group Tax Transaction Records
+This service is used to calculate tax for a transaction and record the accrual of tax liabilities for later audit and filing.
+Use the tax calculation record service instead to simply calculate tax.
+
+## Generating Tax Transaction Records [/transactions]
+The address to use for generating tax transaction records.
+Tax transaction records are meant to be used to calculate tax for inclusion in client system transaction documents.
+Tax transaction records can be retrieved later to assist with tax remittance and reconciliation.
+
+To simply calculate tax associated with a transaction, use /calculations instead.
+
+To generate a tax transaction record, AvaTax requires a tax document in a JSON element in the request body:
+
+
+### Create a Tax Transaction Record [POST]
+A POST to /transactions always recalculates the tax using the information in the request.
+If there is no tax transaction record with the combination of companyCode and documentCode already in the tax transaction record DB for this account, it will be created and the call will return 201.
+If there is a tax transaction record with the combination of companyCode and documentCode already in the tax transaction record DB for this account, it will be updated and the call will return 200.
+
+A POST to https://tax.api.avalara.com/transactions is really shorthand for a post to https://tax.api.avalara.com/transactions/ _companyCode_ / _documentCode_ /versions where _companyCode_ and _documentCode_ are
+the respective values from the request body and will always (subject to passing error checking) result in a new version of the tax transaction record being created at that location.
+
++ Request Update JSON Message (application/json)
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "itemCode": "22456366",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes"
+                    }
+                ]
+            }
+
++ Response 200 (application/json)
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "currency": "USD",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "transactionType": "Sale",
+                        "itemCode": "22456366",
+                        "avalaraGoodsAndServicesType": "PC040402",
+                        "avalaraGoodsAndServicesModifierType": "Title",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes",
+                        "unitOfMeasure": "Each",
+                        "calculatedTax": {
+                            "appliedTax": 3.09,
+                            "subtotalTaxable": 32.5,
+                            "subtotalExempt": 3.09,
+                            "taxAuthorities": [
+                                {
+                                    "jurisdictionName": "WASHINGTON",
+                                    "jurisdictionType": "StateOrProvince",
+                                    "details": [
+                                        {
+                                            "taxType": "WASHINGTON STATE Sales",
+                                            "tax": 2.93,
+                                            "originLocation": "shipFrom",
+                                            "destinationLocation": "shipTo",
+                                            "rate": 9.5,
+                                            "subtotalTaxable": 32.5,
+                                            "subtotalExempt": 0,
+                                            "exempt": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "calculatedTaxSummary": {
+                    "numberOfTaxableLines": 1,
+                    "numberOfExemptLines": 0,
+                    "numberOfLines": 1,
+                    "subtotal": 32.5,
+                    "subtotalTaxable": 32.5,
+                    "subtotalExempt": 0,
+                    "tax": 3.09,
+                    "grandTotal": 35.59
+                },
+                "processingInfo": {
+                    "transactionState": "Recorded",
+                    "versionId": "895d52b1f3c54696a8644eded8e32ee4",
+                    "formatId": 3,
+                    "duration": 0.13,
+                    "modifiedDate": "2014-06-11 19:33:53Z"
+                }
+            }
+
+
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}]
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}/{transactionType}]
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}/{transactionType}{?limit}]
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}/{transactionType}{?limit}{?startCode}]
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}/{transactionType}{?limit}{?startCode}{?startDate}]
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}/{transactionType}{?limit}{?startCode}{?startDate}{?endDate}]
+## Retrieving a List of Tax Transaction Records [/transactions/{companyCode}/{transactionType}{?limit}{?startCode}{?startDate}{?endDate}{?include}]
+This is how Avatax customers can retrieve a list of their tax transaction records.
+The value for *companyCode* is assigned by the calling application and is passed to /transactions in the body of the request when the tax transaction record was generated.
+
++ Parameters
+    + companyCode (URL encoded string, `"Default"`) ... This is a code maintained by the client application to uniquely identify the party on whose behalf we are recording the tax transaction record in the context of an Account. It is unique within the context of an Account.
+    + transactionType (URL encoded string, `"Sale"`) ... This string indicates the type of the transaction. It must be one of "Sale", "Purchase" or "Transfer".
+    + limit (optional, integer, `100`) ... This is the maximum number of records that should be returned by this call.
+    + startCode (optional, URL encoded documentCode, `"Invoice123"`) ... The search will return up to limit records starting from this documentCode.
+    + startDate (optional, URL encoded date in ISO format, `"2014-06-10"`) ... This is the first date to include in the search.
+    + endDate (optional, URL encoded date in ISO format, `"2014-06-12"`) ... This is the last date to include in the search.
+    + include (optional, comma separated list of tax transaction record states, `"Recorded, Voided, Reconciled, Filed, FiledByAvalara"`) ... This is the list of tax transaction record states to include in the search.
+
+### Retrieve a list of transactions [GET]
+
++ Request JSON Message
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+
++ Response 200 (application/json)
+
+    + Body
+
+            [
+                {
+                    "header" : {
+                        "companyCode": "A1 Boats",
+                        "transactionType": "Sale",
+                        "documentCode": "#12345",
+                        "customerCode": "ArgosyCruises",
+                        "transactionDate": "2014-06-11"
+                    },
+                    "lines": [
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Title"
+                        }
+                    ],
+                    "calculatedTaxSummary": {
+                        "subtotalTaxable": 32.5,
+                        "subtotalExempt": 0,
+                        "tax": 3.09
+                    },
+                    "processingInfo": {
+                        "transactionState": "Recorded",
+                        "modifiedDate": "2014-06-11 19:33:53Z",
+                        "batchId":"123213"
+                    }
+                },
+                {
+                    "header" : {
+                        "companyCode": "A1 Boats",
+                        "transactionType": "Sale",
+                        "documentCode": "#12346",
+                        "customerCode": "LetsGoSailing",
+                        "transactionDate": "2014-06-12"
+                    },
+                    "lines": [
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Title"
+                        },
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Rental"
+                        }
+                    ],
+                    "calculatedTaxSummary": {
+                        "subtotalTaxable": 11.23,
+                        "subtotalExempt": 4.00,
+                        "tax": 2.53
+                    },
+                    "processingInfo": {
+                        "transactionState": "Recorded",
+                        "modifiedDate": "2014-06-11 19:33:53Z"
+                    }
+                },
+                {
+                    "header" : {
+                        "companyCode": "A1 Boats",
+                        "transactionType": "Sale",
+                        "documentCode": "#12347",
+                        "customerCode": "WSDOT",
+                        "transactionDate": "2014-06-13"
+                    },
+                    "lines": [
+                        {
+                            "avalaraGoodsAndServicesModifierType": "Title"
+                        }
+                    ],
+                    "calculatedTaxSummary": {
+                        "subtotalTaxable": 12.23,
+                        "subtotalExempt": 7.00,
+                        "tax": 0.53
+                    },
+                    "processingInfo": {
+                        "transactionState": "Voided",
+                        "modifiedDate": "2014-06-11 19:33:53Z",
+                        "batchId":"123213"
+                    }
+                }
+            ]
+
+
+## Retrieving a single Tax Transaction Record [/transactions/{companyCode}/{transactionType}/{documentCode}]
+This is how Avatax customers can retrieve their individual transactions.
+The values for *companyCode* and *documentCode* are assigned by the calling application and are passed to /transactions in the body of the request when the tax transaction record was generated.  The *transactionType* component is passed by the calling application and must be one of "Sale", "Purchase" or "Transfer".
+The most recent version of the tax transaction record is retrieved.
+
++ Parameters
+    + companyCode (URL encoded string, `"Default"`) ... This is a code maintained by the client application to uniquely identify the party on whose behalf we are recording the tax transaction record in the context of an Account. It is unique within the context of an Account.
+    + transactionType (URL encoded string, `"Sale"`) ... This string indicates the type of the transaction. It must be one of "Sale", "Purchase" or "Transfer".
+    + documentCode (URL encoded String, `"1233122"`) ... This is a code maintained by the client application to uniquely identify a tax transaction record. It will typically be an invoice number, receipt number, returned merchandise authorization number, etc.
+
+### Retrieve a single tax transaction record [GET]
+
++ Request JSON Message
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+
++ Response 200 (application/json)
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "currency": "USD",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "transactionType": "Sale",
+                        "itemCode": "22456366",
+                        "avalaraGoodsAndServicesType": "PC040402",
+                        "avalaraGoodsAndServicesModifierType": "Rental",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes",
+                        "unitOfMeasure": "Each",
+                        "calculatedTax": {
+                            "appliedTax": 3.09,
+                            "subtotalTaxable": 32.5,
+                            "subtotalExempt": 3.09,
+                            "taxAuthorities": [
+                                {
+                                    "jurisdictionName": "WASHINGTON",
+                                    "jurisdictionType": "StateOrProvince",
+                                    "details": [
+                                        {
+                                            "taxType": "WASHINGTON STATE Sales",
+                                            "tax": 2.93,
+                                            "originLocation": "shipFrom",
+                                            "destinationLocation": "shipTo",
+                                            "rate": 9.5,
+                                            "subtotalTaxable": 32.5,
+                                            "subtotalExempt": 0,
+                                            "exempt": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "calculatedTaxSummary": {
+                    "numberOfTaxableLines": 1,
+                    "numberOfExemptLines": 0,
+                    "numberOfLines": 1,
+                    "subtotal": 32.5,
+                    "subtotalTaxable": 32.5,
+                    "subtotalExempt": 0,
+                    "tax": 3.09,
+                    "grandTotal": 35.59
+                },
+                "processingInfo": {
+                    "transactionState": "Recorded",
+                    "versionId": "895d52b1f3c54696a8644eded8e32ee4",
+                    "formatId": 3,
+                    "duration": 0.13,
+                    "modifiedDate": "2014-06-11 19:33:53Z"
+                }
+            }
+
+
+
+### Update a Tax Transaction Record [PUT]
+A PUT to a tax transaction record always recalculates the tax using the information in the request.
+If there is no transaction with the combination of companyCode and documentCode already in the transaction DB for this account the call will return 404.
+If there is a transaction with the combination of companyCode and documentCode already in the transaction DB for this account, it will be updated and the call will return 200, if the transaction is in the recorded state, and 405 otherwise.
+
+A PUT to https://tax.api.avalara.com/transactions is really shorthand for a POST to https://tax.api.avalara.com/transactions/ _companyCode_ / _transactionType_ / _documentCode_ /versions where _companyCode_ , _transactionType_ and _documentCode_ are
+the respective values from the request body and will always (subject to passing error checking) result in a new version of the invoice being created at that location.
+
++ Request Update JSON Message (application/json)
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "transactionType": "Sale",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "itemCode": "22456366",
+                        "quantity": 1,
+                        "extendedAmount": 32.5,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes"
+                    }
+                ]
+            }
+
++ Response 200 (application/json)
+
+    + Body
+
+            {
+                "header": {
+                    "companyCode": "A1 Boats",
+                    "documentCode": "#12345",
+                    "customerCode": "ArgosyCruises",
+                    "transactionDate": "2014-06-11",
+                    "currency": "USD",
+                    "defaultTransactionType": "Sale",
+                    "defaultLocations": {
+                        "shipTo": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        },
+                        "shipFrom": {
+                            "address": {
+                                "line1": "1101 Alaskan Way",
+                                "city": "Seattle",
+                                "state": "WA",
+                                "zipcode": "98101",
+                                "country": "USA"
+                            },
+                            "latlong": {
+                                "lattitude": "47.604813",
+                                "longitude": "-122.339811"
+                            }
+                        }
+                    }
+                },
+                "lines": [
+                    {
+                        "lineCode": "1",
+                        "transactionType": "Sale",
+                        "itemCode": "22456366",
+                        "avalaraGoodsAndServicesType": "PC040402",
+                        "avalaraGoodsAndServicesModifierType": "Rental",
+                        "quantity": 2,
+                        "extendedAmount": 65,
+                        "itemDescription": "Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes",
+                        "unitOfMeasure": "Each",
+                        "calculatedTax": {
+                            "appliedTax": 3.09,
+                            "subtotalTaxable": 32.5,
+                            "subtotalExempt": 3.09,
+                            "taxAuthorities": [
+                                {
+                                    "jurisdictionName": "WASHINGTON",
+                                    "jurisdictionType": "StateOrProvince",
+                                    "details": [
+                                        {
+                                            "taxType": "WASHINGTON STATE Sales",
+                                            "tax": 2.93,
+                                            "originLocation": "shipFrom",
+                                            "destinationLocation": "shipTo",
+                                            "rate": 9.5,
+                                            "subtotalTaxable": 32.5,
+                                            "subtotalExempt": 0,
+                                            "exempt": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "calculatedTaxSummary": {
+                    "numberOfTaxableLines": 1,
+                    "numberOfExemptLines": 0,
+                    "numberOfLines": 1,
+                    "subtotal": 65,
+                    "subtotalTaxable": 65,
+                    "subtotalExempt": 0,
+                    "tax": 6.18,
+                    "grandTotal": 71.18
+                },
+                "processingInfo": {
+                    "transactionState": "Recorded",
+                    "versionId": "895d52b1f3c54696a8644eded8e32ee4",
+                    "formatId": 3,
+                    "duration": 0.13,
+                    "modifiedDate": "2014-06-11 19:33:53Z"
+                }
+            }
+
+
+## Transitioning Tax Transaction Record States [/transactions/{companyCode}/{transactionType}/{documentCode}/stateTransitions]
+Tax transaction record states are managed by the Avalara services. Certain events may cause transitions between the states. The state of a tax transaction record affects whether it is included in tax filing and whether it can be modified. 
+Transactions can be in the following states:
+![Transaction State Diagram](https://f8ad03296218c1f358e05fb8588c090f2f9d502d.googledrive.com/host/0B7DZjLT2LZrwQVpGNWx2Y1Uwc0U/TNG%20Document%20Flow.jpg "Transaction State Diagram")
+
+Transactions can be in one of five states:
+
+| State    | Description                                                                                                                                                                                                   |
+|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Recorded | Transactions in this state have been recorded in the Avalara system. They can be edited. They should be included in an upcoming tax filing.                                                                        |
+| Voided   | Transactions in this state have been recorded in the Avalara system. They cannot be edited. They will not be included in tax filing.                                                                          |
+| Reconciled | Transactions in this state have been recorded in the Avalara system. They cannot be edited. They are likely to be included in a tax filing shortly.  |
+| Filed    | Transactions in this state have been recorded in the Avalara system. They cannot be edited. They are likely to have been included in a tax filing by the client systems.  |
+| FiledByAvalara    | Transactions in this state have been recorded in the Avalara system. They cannot be edited. They have been included in a tax filing by Avalara systems.  |
+
+The States API is used to record significant events associated with state transitions of the tax transaction record.
+Supported events are:
+
+| Event    | Description                                                                                                                                                                                                   | Starting state | End state |
+|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|-----------|
+| Voided   | Send this event to a Recorded tax transaction record to mark it as voided.                                                                                                                                               | Recorded       | Voided    |
+| UnVoided   | Send this event to a Voided tax transaction record to mark it as recorded.                                                                                                                                               | Voided       | Recorded    |
+| Reconciled   | Send this event to a Recorded tax transaction record to indicate that it has been reconciled with client systems and to prevent it from being edited prior to filing. This is useful when a transaction will be filed and you do not want it to change again to facilitate auditing and reconciliation. | Recorded       | Reconciled    |
+| UnReconciled   | Send this event to a Reconciled tax transaction record to indicate that it has not been reconciled and may need to be edited. This is useful when a Tax transaction was erroniously put into the reconciled state. | Reconciled       | Recorded    |
+| Filed | Send this event to a Reconciled transaction to indicate that it has been part of a tax filing by the client system.                  | Reconciled         | Filed  |
+| UnFiled | Send this event to a Filed transaction to indicate that it has NOT been part of a tax filing by the client system.                  | Filed         | Reconciled  |
+| FiledByAvalara | This event can only be sent by Avalara Systems                  | Reconciled         | FiledByAvalara  |
+
+
+To send state change events to transactions, AvaTax requires the following information in a JSON element in the request body:
+State change events contain the following information:
+
+State Change Request format
+
+| Element               | Description                                                                            | Example                 |
+|-----------------------|----------------------------------------------------------------------------------------|-------------------------|
+| type                  | This is a string with one of the following values: "Voided", "UnVoided", "Reconciled", "UnReconciled", "Filed", "UnFiled"      | "Voided"                |
+| comment               | This is a string that will be recorded along with the event for audit purposes.        | "SR123: corrected fat finger"  |
+
++ Parameters
+    + companyCode (URL encoded string, `"Default"`) ... This is a code maintained by the client application to uniquely identify the party on whose behalf we are recording the Tax transaction in the context of an Account. It is unique within the context of an Account.
+    + transactionType (URL encoded string, `"Sale"`) ... This string indicates the type of the transaction. It must be one of "Sale", "Purchase" or "Transfer".
+    + documentCode (URL encoded String, `"1233122"`) ... This is a code maintained by the client application to uniquely identify a transaction. It will typically be an invoice number, receipt number, returned merchandise authorization number, etc.
+
+### Create a Transaction Event Record [POST]
+
++ Request Update JSON Message (application/json)
+
+    + Headers
+
+            Accept: application/json; tax-version=1
+            User-Agent: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+            Authorization: Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1
+            X-Avalara-AccountId: 2ead98c1-ecbf-4708-8d86-b01af8bc13e5
+
+    + Body
+
+            {
+                "type": "voided",
+                "comment": "SR123: corrected fat finger"
+            }
+
++ Response 201
+
+    + Header
+
+            Location: https://tax.api.avalara.com/transactions/Argosy%20Cruises/Sale/Invoice%3A12345
+
+
+# Group Addresses
+Allows for the validation of addresses and associated functionality
+
+## Addresses  [/addresses]
+### Validate an Address or Group of Addresses [POST]
++ Request (application/json)
+
+        [{
+        "23dfc96d-8550-46d0-9fba-cf6d43b14b3f": {
+        "isValid": true,
+        "country": "sample string 2",
+        "geocoded": true,
+        "resolved": false,
+        "geocode": {
+        "latitude": 1.0,
+        "longitude": 2.0,
+        "resolutionQuality": "notCoded",
+        "correlationId": "2416fc3392f14db2b9b997c2c93cf5dc",
+        "resolvedBy": "2965d2b87f524f4e89495ef3a3901461"
+        }
+        },
+        "9884a93a-7112-474e-9247-df7e7868d709": {
+        "isValid": true,
+        "country": "sample string 2",
+        "geocoded": true,
+        "resolved": false,
+        "geocode": {
+        "latitude": 1.0,
+        "longitude": 2.0,
+        "resolutionQuality": "notCoded",
+        "correlationId": "2416fc3392f14db2b9b997c2c93cf5dc",
+        "resolvedBy": "2965d2b87f524f4e89495ef3a3901461"
+        }
+        }
+        }]
+
++ Response 200 (application/json)
+
+        [{
+        "07336dc2-d437-4df4-969e-4593b73f4920": {
+        "isValid": true,
+        "country": "sample string 2",
+        "geocoded": true,
+        "resolved": false,
+        "geocode": {
+        "latitude": 1.0,
+        "longitude": 2.0,
+        "resolutionQuality": "notCoded",
+        "correlationId": "6020675a691f4a14a854e2aa5db6ef56",
+        "resolvedBy": "58aec85f19e840c99f6d744c4350ce43"
+        }
+        },
+        "89ddcc96-0768-43ed-81de-35d3e2ea343f": {
+        "isValid": true,
+        "country": "sample string 2",
+        "geocoded": true,
+        "resolved": false,
+        "geocode": {
+        "latitude": 1.0,
+        "longitude": 2.0,
+        "resolutionQuality": "notCoded",
+        "correlationId": "6020675a691f4a14a854e2aa5db6ef56",
+        "resolvedBy": "58aec85f19e840c99f6d744c4350ce43"
+        }
+        }
+        }]
+
+## List all Countries [/api/addresses/countries]
+Gets a bare dictionary that maps 3-letter country codes onto full, human-readable company names.
+### List Countries [GET]
++ Response 200 (application/json)
+
+        [{
+        "sample string 1": "sample string 2",
+        "sample string 3": "sample string 4"
+        }]
+
+## Rules by Country Code [/api/addresses/countries/{country}]
+Gets a dictionary of by-field rules for a given iso code.
+
+### List Rules [GET]
+
++ Parameters
+    + country (required, string, `US`) ... Two-character ISO country code.
+
++ Response 200 (application/json)
+
+        [{
+        "sample string 1": {
+        "sample string 1": "sample string 2",
+        "sample string 3": "sample string 4"
+        },
+        "sample string 2": {
+        "sample string 1": "sample string 2",
+        "sample string 3": "sample string 4"
+        }
+        }]
+

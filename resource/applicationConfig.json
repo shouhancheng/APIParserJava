@@ -1,0 +1,374 @@
+{
+  "api.base.url": "https://private-2e5db-nextgencalc.apiary-mock.com",
+  "api.content.type": "application/json",
+  "api.account.id": "2ead98c1-ecbf-4708-8d86-b01af8bc13e5",
+  "api.ava.auth": "Avalara : MmVhZDk4YzEtZWNiZi00NzA4LThkODYtYjAxYWY4YmMxM2U1",
+  "api.ava.accept": "application/json; tax-version=1",
+  "elements": {
+    "companyCode":{
+      "required":"true",
+      "description":"This string is a code maintained by the client application to uniquely identify the company for which this transaction is being recorded. It is unique within the context of an Account.",
+      "default":"A1 Boats"
+    },
+    "transactionType":{
+      "required":"true",
+      "description":"This string indicates the type of transaction for which tax should be calculated. It must be one of the following values \"Sale\", \"Purchase\" or \"Transfer\"",
+      "default":"Sale"
+    },
+    "documentCode":{
+      "required":"true",
+      "description":"This string is a code maintained by the client application to uniquely identify a document in the client's systems. It will typically be an invoice number, receipt number, returned merchandise authorization number, etc.",
+      "default":"Invoice:12345"
+    },
+    "customerCode":{
+      "required":"true",
+      "description":"This string is a code maintained by the client application to uniquely identify the party with whom the company (identified by companyCode) is transacting. It is unique within the context of an Account.",
+      "default":"Argosy Cruises"
+    },
+    "vendorCode":{
+      "required":"true",
+      "description":"This string is a code maintained by the client application to uniquely identify the party with whom the company (identified by companyCode) is transacting. It is unique within the context of an Account.",
+      "default":"A1 Anchors"
+    },
+    "transactionDate":{
+      "required":"true",
+      "description":"This string is the transaction date in ISO 8601 format (which may be different from the date the tax calculation is performed)",
+      "default":"2014-06-11"
+    },
+    "currency":{
+      "required":"false",
+      "description":"This string is the the currency used for this transaction in ISO 4217:2008 format",
+      "default":"USD"
+    },
+    "totalTaxOverrideAmount":{
+      "required":"false",
+      "description":"This decimal is the Tax Override Amount which overrides the total tax for the transaction. This may used for imported transactions, returns, and layaways where the tax has already been calculated either by AvaTax or another means. The tax shown for each line item is proportional to the line item's price. See the taxOverrideAmount for each line item to specify an override for a single line or to distribute the tax disproportionate to the price.",
+      "default":"2.35"
+    },
+    "taxCalculationDate":{
+      "required":"false",
+      "description":"This string is the date, in ISO 8601 format, on which tax is to be calculated for this transaction (normally tax is calculated on the date the transaction is performed as captured in the transactionDate field). This is useful for layaways and other deferred transactions.",
+      "default":"2014-06-11"
+    },
+    "defaultAvalaraGoodsAndServicesModifierType":{
+      "required":"false",
+      "description":"This string captures the goods and services modifier to be used for all lines that do not override this value. The Avalara goods and services type determines the specific type of goods or services associated with a particular line in the transaction. The Avalara goods and services modifier determines variations on the goods and services type. For example, if the goods were a type of food, the modifier might be \"dine in\" or \"take out\". If the goods and services were a \"bicycle\" the modifier might be \"rental\" versus \"title\".",
+      "default":"Rental"
+    },
+    "defaultTaxPayerCode":{
+      "required":"false",
+      "description":"This string is a code issued by a tax authority to identify a party (typically the customer associated with the customerCode field) that is exempt from tax for this type of transaction. This will apply to all lines in this transaction that don't otherwise override it.",
+      "default":"A2323223"
+    },
+    "defaultEntityUseType":{
+      "required":"false",
+      "description":"This string captures the type of customer or type of use associated with all lines in the transaction that don't otherwise override this value. Valid values are: A - Federal Government, B - State/Local Govt., C - Tribal Government, D - Foreign Diplomat, E - Charitable Organization, F - Religious/Education, G - Resale, H - Agricultural Production, I - Industrial Prod/Mfg., J - Direct Pay Permit, K - Direct Mail, L - Other, N - Local Government, P - Commercial Aquaculture (Canada), Q - Commercial Fishery (Canada), R - Non-resident (Canada)",
+      "default":"H"
+    },
+    "purchaseOrderNumber":{
+      "required":"false",
+      "description":"This is a string representing a purchase order number which might be used to look up a single use tax exemption certification",
+      "default":"PO:1234"
+    },
+    "metadata":{
+      "required":"false",
+      "description":"This is a collection of MetadataItems (string pairs) which exists to allow callers of the API to set arbitrary information that will be returned in the tax calculation response and which can be used during reporting",
+      "default":"Metadata"
+    },
+    "lineCode":{
+      "required":"true",
+      "description":"This string is a unique identifier for this line in the transaction",
+      "default":"1"
+    },
+    "itemCode":{
+      "required":"false",
+      "description":"This string is a code maintained by the client application to uniquely identify a product or service. It will likely be a SKU and is required for SST states.",
+      "default":"22456366"
+    },
+    "avalaraGoodsAndServicesType":{
+      "required":"false",
+      "description":"This string identifies a category of products for tax purposes. It will likely be one of Avalara's standard avalaraGoodsAndServicesTypes, but may be a custom type configured in the Customer Portal. If not specified, itemCode to avalaraGoodsAndServicesType mapping will happen during tax calculation.",
+      "default":"PC040402"
+    },
+    "avalaraGoodsAndServicesModifierType":{
+      "required":"false",
+      "description":"This string captures the goods and services modifier to be used for this line. The Avalara goods and services type determines the specific type of goods or services associated with a particular line in the transaction. The Avalara goods and services modifier determines variations on the goods and services type. For example, if the goods were a type of food, the modifier might be \"dine in\" or \"take out\". If the goods and services were a \"bicycle\" the modifier might be \"rental\" versus \"title\".",
+      "default":"Rental"
+    },
+    "quantity":{
+      "required":"false",
+      "description":"This decimal captures the number of individual units represented by this line. Digits after the decimal point are optional.",
+      "default":"1"
+    },
+    "extendedAmount":{
+      "required":"true",
+      "description":"This decimal captures the total cost of this line. In its simplest form extendedAmount = unit price * quantity",
+      "default":"43.50"
+    },
+    "itemDescription":{
+      "required":"false",
+      "description":"This string captures the description of the item represented by this line",
+      "default":"Men's adidas FREEFOOTBALL JANEIRINHA Soccer Shoes"
+    },
+    "unitOfMeasure":{
+      "required":"false",
+      "description":"This string captures the unit of measure associated with this line item. ",
+      "default":"Each"
+    },
+    "locations":{
+      "required":"true",
+      "description":"This element contains a dictionary of locations such as the ShipFrom and ShipTo addresses to be associated with this line. ",
+      "default":"Location"
+    },
+    "taxPayerCode":{
+      "required":"false",
+      "description":"This string is a code issued by a tax authority to identify a party (typically the customer associated with the customerId field) that is exempt from tax for this type of transaction. This value will override any value set at the transaction level.",
+      "default":"A2323223"
+    },
+    "entityUseType":{
+      "required":"false",
+      "description":"This string captures the type of customer or type of use associated with this line in the transaction. ",
+      "default":"H"
+    },
+    "taxOverrideAmount":{
+      "required":"false",
+      "description":"This decimal is the Tax Override Amount which overrides the tax for the line. ",
+      "default":"2.53"
+    },
+    "taxIncluded":{
+      "required":"false",
+      "description":"This is a field to indicate whether the extendedPrice includes tax or not. It must be either \"true\" or \"false\" if present.",
+      "default":"true"
+    },
+    "calculatedTax":{
+      "required":"false",
+      "description":"This element contains the calculated tax information for this line item. This element is created by the tax service and overwritten if it exists.",
+      "default":"calculatedTax"
+    },
+    "numberOfTaxableLines":{
+      "required":"false",
+      "description":"This integer captures the number of lines that were determined to have tax due on them",
+      "default":"1"
+    },
+    "numberOfExemptLines":{
+      "required":"false",
+      "description":"This integer represents the number of lines that were determined to not have any tax due on them",
+      "default":"0"
+    },
+    "numberOfLines":{
+      "required":"false",
+      "description":"This integer captures the number of lines in the transaction",
+      "default":"1"
+    },
+    "subtotal":{
+      "required":"false",
+      "description":"This decimal captures the subtotal for this transaction",
+      "default":"43.50"
+    },
+    "subtotalExempt":{
+      "required":"false",
+      "description":"This decimal captures the amount of this transaction that was not taxed.",
+      "default":"0.00"
+    },
+    "tax":{
+      "required":"false",
+      "description":"This decimal captures the amount of tax due for this transaction.",
+      "default":"4.33"
+    },
+    "grandTotal":{
+      "required":"false",
+      "description":"This decimal captures the total due to be paid by the purchaser to the seller including tax.",
+      "default":"47.63"
+    },
+    "transactionState":{
+      "required":"false",
+      "description":"This string represents the state of the transaction in the Avalara systems. It will have a value equal to the name of one of the states a transaction can be in.",
+      "default":"Recorded"
+    },
+    "versionId":{
+      "required":"false",
+      "description":"This string is a unique identifier for the tax calculation.",
+      "default":"895d52b1f3c54696a8644eded8e32ee4"
+    },
+    "formatId":{
+      "required":"false",
+      "description":"This integer represents the format of this transaction, which may be useful for support queries.",
+      "default":"3"
+    },
+    "duration":{
+      "required":"false",
+      "description":"This decimal represents the number of seconds taken to process the tax calculation.",
+      "default":"0.130"
+    },
+    "modifiedDate":{
+      "required":"false",
+      "description":"This string is the date, in ISO 8601 format, on which the most recent update to this document was posted",
+      "default":"2014-06-11 19:33:53Z"
+    },
+    "batchId":{
+      "required":"false",
+      "description":"This string identifies the batch that this transaction was part of. If the transaction was not part of a batch import, this field is omitted. If the transaction was part of multiple batches, this string identifies the most recent.",
+      "default":"895d52b1f3c54696a8644eded8e32ee4"
+    },
+    "documentId":{
+      "required":"false",
+      "description":"This string identifies the avalara version Id of the original transaction that created the entry",
+      "default":"895d52b1f3c54696a8644eded8e32ee4"
+    },
+    "latency":{
+      "required":"false",
+      "description":"This integer captures the latency in miliseconds for a previous call from the client perspective.",
+      "default":"100"
+    },
+    "latlong":{
+      "required":"false",
+      "description":"This element contains a latitude and longitude",
+      "default":"Latlong"
+    },
+    "locationCode":{
+      "required":"false",
+      "description":"This string is the identity of a pre-configured location unique to the company",
+      "default":"Loc34"
+    },
+    "IpAddress":{
+      "required":"false",
+      "description":"This is an IP address for digital distribution",
+      "default":"54.1.3.1"
+    },
+    "addressTaxPayerCode":{
+      "required":"false",
+      "description":"This taxPayerCode overrides any taxPayerCode that may have been specified in the header or line item if this address is determined to govern the selection of tax rules (i.e.: if the transaction is sourced to this address)",
+      "default":"98237498623948"
+    },
+    "addressEntityUseType":{
+      "required":"false",
+      "description":"This entityUseType overrides any entityUseType that may have been specified in the header or line item if this address is determined to govern the selection of tax rules",
+      "default":"H"
+    },
+    "latitude":{
+      "required":"true",
+      "description":"This decimal captures the latitude of the transaction",
+      "default":"47.604813"
+    },
+    "longitude":{
+      "required":"true",
+      "description":"This decimal captures the longitude of the transaction",
+      "default":"-122.339811"
+    },
+    "line1":{
+      "required":"true",
+      "description":"This string captures the first line of the address",
+      "default":"1101 Alaskan Way"
+    },
+    "line2":{
+      "required":"false",
+      "description":"This string captures the second line of the address",
+      "default":"Suite 123"
+    },
+    "line3":{
+      "required":"false",
+      "description":"This string captures the third line of the address",
+      "default":"Box 123"
+    },
+    "city":{
+      "required":"false",
+      "description":"This string captures the city of the address",
+      "default":"Seattle"
+    },
+    "state":{
+      "required":"false",
+      "description":"This string captures the state of the address",
+      "default":"WA"
+    },
+    "country":{
+      "required":"true",
+      "description":"This string captures the country code in ISO 3166-1 alpha-3 format",
+      "default":"USA"
+    },
+    "zipcode":{
+      "required":"true",
+      "description":"This string captures the zip code of the address",
+      "default":"98101"
+    },
+    "municipality":{
+      "required":"false",
+      "description":"Synonym for city",
+      "default":"Seattle"
+    },
+    "town":{
+      "required":"false",
+      "description":"Synonym for city",
+      "default":"Seattle"
+    },
+    "province":{
+      "required":"false",
+      "description":"Synonym for state",
+      "default":"WA"
+    },
+    "postalCode":{
+      "required":"true",
+      "description":"Synonym for zipcode",
+      "default":"98101"
+    },
+    "postCode":{
+      "required":"true",
+      "description":"Synonym for zipcode",
+      "default":"98101"
+    },
+    "appliedTax":{
+      "required":"false",
+      "description":"This decimal captures the total tax applicable for this line",
+      "default":"4.13"
+    },
+    "subtotalTaxable":{
+      "required":"false",
+      "description":"This decimal captures how much of the extendedAmount was taxable. The subtotal taxable may vary from jurisdiction to jurisdiction and from tax to tax, and this number represents the highest amount taxed from any tax in any jurisdiction.",
+      "default":"4.13"
+    },
+    "taxAuthorities":{
+      "required":"false",
+      "description":"This decimal captures how much of the extendedAmount was non-taxed. This is simply the extended amount minus the subtotal taxed.",
+      "default":"0"
+    },
+    "jurisdictionName":{
+      "required":"false",
+      "description":"This string captures the name of the taxing jurisdiction",
+      "default":"Washington"
+    },
+    "jurisdictionType":{
+      "required":"false",
+      "description":"This string captures the type of taxing jurisdiction",
+      "default":"State"
+    },
+    "taxType":{
+      "required":"false",
+      "description":"This string captures the type of the tax",
+      "default":"sales"
+    },
+    "rateType":{
+      "required":"false",
+      "description":"This string captures the type of the rate used",
+      "default":"food"
+    },
+    "rate":{
+      "required":"false",
+      "description":"This decimal captures the tax rate for this tax.",
+      "default":"0.03"
+    },
+    "exempt":{
+      "required":"false",
+      "description":"This flag is used to indicate that this customer is exempt from this tax for this transaction",
+      "default":"false"
+    },
+    "exemptionReason":{
+      "required":"false",
+      "description":"This string is required if the exempt flag is present and set to true",
+      "default":"Certificate on File"
+    },
+    "passthrough":{
+      "required":"false",
+      "description":"This flag is used to indicate that this tax is a passthrough (shows up on returns but not on receipt)",
+      "default":"false"
+    }
+  }
+}
